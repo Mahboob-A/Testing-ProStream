@@ -26,6 +26,7 @@ class Streamer(models.Model):
         is_actively_streraming = models.BooleanField(default=True)
         has_team_invitation_received = models.BooleanField(default=False)
         team_invite_acceptance_status = models.BooleanField(_("team invite acceptance status"), default=False)
+        is_in_a_team = models.BooleanField(default=False) # check this to add an streamer into a team (and turn True if added the streamer into a team)
         is_temporarily_deactivated = models.BooleanField(default=False)
         is_permanently_banned = models.BooleanField(default=False) 
         
@@ -165,7 +166,67 @@ class SocialMedia(models.Model):
 # only stremers can create a team 
 class Team(models.Model): 
         id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+        creator = models.OneToOneField(Streamer, on_delete=models.CASCADE, help_text='Team Creator')
+        members = models.ManyToManyField(Streamer, null=True, blank=True)
+        name = models.CharField(max_length=50, help_text='Team Name')
+        total_team_members = models.IntegerField(default=0, null=True, blank=True)
         
+        def __str__(self): 
+                return self.name 
 
 
+
+from django.db import models
+
+class Team(models.Model):
+        admin = models.OneToOneField(Streamer, on_delete=models.CASCADE, related_name='created_team')
+        name = models.CharField(max_length=100)
+        members = models.ManyToManyField(Streamer, related_name='teams', blank=True)
+
+        def add_member(self, streamer):
+                
+                if streamer in self.members.all(): 
+                        return f'{streamer.original_user.username} is already in your Squad!'
+                
+                if self.admin == streamer: 
+                        return f'This is your Squad and you are alrady in!'
+                
+                # add the streamer. | other validation if the streamer is already in other team validated in view using is_in_a_team of Streamer field. 
+                self.members.add(streamer)
+                return f'{streamer.original_user.username} is added in the Squad!'
+        
+        # if the admin wants to remove the member from his team | other validations will be done in the views if needed. 
+        def remove_member(self, streamer):
+                
+                if streamer in self.members.all(): 
+                        self.members.remove(streamer)
+                        return f'{streamer.original_user.username} is removed!'
+                else: 
+                        return f'{streamer.original_user.username} is not found in your Squad!'
+                
+        # if the admin wants to exit the team, make the selected admin as new admin, and make the is_in_a_team field of the admin (Streamer Object) to False 
+        def exit_team_admin(self, admin, new_admin): 
+                if self.admin == admin: 
+                        if new_admin in self.members.all(): 
+                                self.admin = new_admin
+                                admin.is_in_a_team = False 
+                                admin.save()
+                                
+                return 'Team admin exit is successfull!'
+                                
+        # if the team wants to change the admin | change the admin to the selected admin 
+        def  change_admin_selected(self, admin, new_admin):
+                if self.admin == admin: 
+                        if new_admin in self.members.all(): 
+                                self.admin = new_admin
+                                self.members.add(admin)
+                return 'New admin selection is successfull!'
+                 
+                
+
+# category model is not defined yet 
+class Follow(models.Model): 
+        follower = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='following'),
+        follwoing = models.ForeignKey(Streamer, on_delete=models.CASCADE, related_name='followers'),
+        category_follwing = models.ForeignKey('Category', on_delete=models.CASCADE, related_name='category_follower'),
         
