@@ -43,6 +43,8 @@ INSTALLED_APPS = [
     # project apps
     'accounts',
     'user_profile',
+    'live_stream',
+    'privacy_and_security',
     
 ]
 
