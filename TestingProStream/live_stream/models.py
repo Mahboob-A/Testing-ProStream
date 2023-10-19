@@ -32,7 +32,7 @@ class Category(models.Model):
         
 
 class Chat(models.Model): 
-        ''' a single chat instance for a single stream instance  '''
+        ''' a single chat instance for a single stream instance   '''
         
         id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
         stream = models.OneToOneField(Stream, on_delete=models.CASCADE)
