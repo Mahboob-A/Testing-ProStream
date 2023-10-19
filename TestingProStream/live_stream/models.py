@@ -11,7 +11,7 @@ from accounts.models import CustomUser
 from user_profile.models import * 
 
 
-
+# 191023, Thursday, 05.00 pm 
 
 class Category(models.Model): 
         id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
