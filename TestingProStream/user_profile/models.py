@@ -7,6 +7,8 @@ from django.conf import settings
 from django.utils.translation import gettext_lazy as _
 from django.core.validators import RegexValidator, MinLengthValidator, MaxLengthValidator
 
+from taggit.managers import TaggableManager
+
 from accounts.models import CustomUser
 
 
@@ -20,13 +22,20 @@ class Streamer(models.Model):
         team = models.OneToOneField('Team', on_delete=models.SET_NULL, blank=True, null=True)
         # social_media = models.OneToOneField('SocialMedia', on_delete=models.SET_NULL)
         
-        first_name = models.CharField(max_length=20)
-        last_name = models.CharField(max_length=20)
+        first_name = models.CharField(max_length=20, null=True, blank=True)
+        last_name = models.CharField(max_length=20, null=True, blank=True)
         
         is_actively_streraming = models.BooleanField(default=True)
+        
+        # actions for Team activity 
         has_team_invitation_received = models.BooleanField(default=False)
         team_invite_acceptance_status = models.BooleanField(_("team invite acceptance status"), default=False)
         is_in_a_team = models.BooleanField(default=False) # check this to add an streamer into a team (and turn True if added the streamer into a team)
+        
+        # action for reporting
+        max_warning = models.PositiveIntegerField(default=5) 
+        # increase when the streamer is found guily for a report. when the max warning is reached, then take higher action  
+        current_warning_count = models.PositiveIntegerField(default=0)  
         is_temporarily_deactivated = models.BooleanField(default=False)
         is_permanently_banned = models.BooleanField(default=False) 
         
@@ -57,7 +66,10 @@ class Channel(models.Model):
         streamer_about_1 = models.TextField(null=True, blank=True)
         streamer_about_2 = models.TextField(null=True, blank=True)
      
-
+        createdAt = models.DateTimeField(default=timezone.now)
+        updatedAt = models.DateTimeField(auto_now=True) 
+        deletedAt = models.DateTimeField(blank=True, null=True)
+        
         class Meta:
                 verbose_name = _("Channel")
                 verbose_name_plural = _("Channels")
@@ -69,12 +81,12 @@ class Channel(models.Model):
                 return reverse("channel_detail", kwargs={"id": self.id})
 
 
-class Tags(models.Model): 
-        id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-        name = models.CharField(max_length=15)
+# class Tags(models.Model): 
+#         id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+#         name = models.CharField(max_length=15)
 
-        def __str__(self): 
-                return self.name 
+#         def __str__(self): 
+#                 return self.name 
 
 
 CONTENT_CLASSIFICATIONS = (
@@ -113,13 +125,12 @@ class Stream(models.Model):
         streamer = models.ForeignKey(Streamer, on_delete=models.CASCADE, related_name='streams', null=True, blank=True),
         category = models.ForeignKey('Category', on_delete=models.SET_NULL, related_name='category_streams'),
         chat = models.OneToOneField('Chat', on_delete=models.CASCADE, null=True, blank=True)
-        tags = models.ManyToManyField(Tags)
+        tags = TaggableManager()  # for hanling tags efficiently  
         
         stream_title = models.CharField(max_length=150, validators=[MinLengthValidator(15, message='Your title is too short! Type at least 15 characters!')])
-        go_live_notification = models.CharField(max_length=150, validators=[MinLengthValidator(message='Your notification title is too short! Type at least 15 characters!')], null=True, blank=True)
+        go_live_notification = models.CharField(max_length=150, validators=[MinLengthValidator(15, message='Your notification title is too short! Type at least 15 characters!')], null=True, blank=True)
         
-        tag_list = models.CharField(max_length=250, help_text='Enter tags seperated by coma', null=True, blank=True)
-        content_classification = models.CharField(max_length=15, default='General', choices=[CONTENT_CLASSIFICATIONS], null=True, blank=True)
+        content_classification = models.CharField(max_length=15, default='General', choices=CONTENT_CLASSIFICATIONS, null=True, blank=True)
         has_content_classification = models.BooleanField(default=False)
         
         language = models.CharField(max_length=25, null=True, blank=True)
@@ -128,18 +139,15 @@ class Stream(models.Model):
         is_previously_recorded = models.BooleanField(default=False, null=True, blank=True)
         has_branded_content = models.BooleanField(default=False, null=True, blank=True)
         
+        createdAt = models.DateTimeField(default=timezone.now)
+        updatedAt = models.DateTimeField(auto_now=True) 
+        deletedAt = models.DateTimeField(blank=True, null=True)
+        
         def save(self, *args, **kwargs): 
-                tag_names = [name.strip() for name in self.tag_list.split(', ')]
-                tags = []
-                for name in tag_names: 
-                        tag, created = Tags.objects.get_or_create(name=name)
-                        tags.append(tag)
-                        
                 if self.content_classification: 
                         self.has_content_classification = True 
                 else: 
                         self.has_content_classification = False 
-                self.tags.set(tags)
                 super().save(*args, **kwargs)
 
         
@@ -158,31 +166,44 @@ class SocialMedia(models.Model):
         other_link_1 = models.URLField(null=True, blank=True)
         other_link_2 = models.URLField(null=True, blank=True)
         
+        createdAt = models.DateTimeField(default=timezone.now)
+        updatedAt = models.DateTimeField(auto_now=True) 
+        deletedAt = models.DateTimeField(blank=True, null=True)
+        
         def __str__(self): 
                 return f"{self.streamer.first_name}'s social account"
         
         
 
 # only stremers can create a team 
-class Team(models.Model): 
-        id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-        creator = models.OneToOneField(Streamer, on_delete=models.CASCADE, help_text='Team Creator')
-        members = models.ManyToManyField(Streamer, null=True, blank=True)
-        name = models.CharField(max_length=50, help_text='Team Name')
-        total_team_members = models.IntegerField(default=0, null=True, blank=True)
+# class Team(models.Model): 
+#         id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+#         creator = models.OneToOneField(Streamer, on_delete=models.CASCADE, help_text='Team Creator')
+#         members = models.ManyToManyField(Streamer, null=True, blank=True)
+#         name = models.CharField(max_length=50, help_text='Team Name')
+#         total_team_members = models.IntegerField(default=0, null=True, blank=True)
         
-        def __str__(self): 
-                return self.name 
+#         createdAt = models.DateTimeField(default=timezone.now)
+#         updatedAt = models.DateTimeField(auto_now=True) 
+#         deletedAt = models.DateTimeField(blank=True, null=True)
+        
+#         def __str__(self): 
+#                 return self.name 
 
-
-
-from django.db import models
 
 class Team(models.Model):
-        admin = models.OneToOneField(Streamer, on_delete=models.CASCADE, related_name='created_team')
-        name = models.CharField(max_length=100)
+        id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+        
+        admin = models.OneToOneField(Streamer, on_delete=models.CASCADE, related_name='created_team', help_text='Team Creator')
         members = models.ManyToManyField(Streamer, related_name='teams', blank=True)
+        
+        name = models.CharField(max_length=50, help_text='Team Name')
+        total_team_members = models.IntegerField(default=0, null=True, blank=True)
 
+        createdAt = models.DateTimeField(default=timezone.now)
+        updatedAt = models.DateTimeField(auto_now=True) 
+        deletedAt = models.DateTimeField(blank=True, null=True)
+        
         def add_member(self, streamer):
                 
                 if streamer in self.members.all(): 
@@ -230,3 +251,6 @@ class Follow(models.Model):
         follwoing = models.ForeignKey(Streamer, on_delete=models.CASCADE, related_name='followers'),
         category_follwing = models.ForeignKey('Category', on_delete=models.CASCADE, related_name='category_follower'),
         
+        createdAt = models.DateTimeField(default=timezone.now)
+        updatedAt = models.DateTimeField(auto_now=True) 
+        deletedAt = models.DateTimeField(blank=True, null=True)
