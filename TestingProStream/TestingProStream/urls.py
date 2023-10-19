@@ -20,6 +20,7 @@ from django.urls import path, include
 # creating and testing the models here : 171023, Tuesday to 
 # 191023, Thursday, 05.00 pm     
 
+
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('', include('accounts.urls')),
